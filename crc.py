@@ -22,7 +22,6 @@ def calCrc(inStr):
         0x7A05, 0x1E73, 0x2316, 0x64B9, 0x59DC, 0xEBE7, 0xD682, 0x912D, 0xAC48]
 
     inLen = int(int(len(inStr)/16)*16)
-    print(inLen)
     crc = 0
     for i in range(inLen):
         crc = ((crc << 8) ^ dnpCrcTable[((crc >> 8) ^ inStr[i]) & 0x00FF]) & 0xFFFF
