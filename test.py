@@ -115,6 +115,22 @@ for i in range(obisNum):
                 except:
                     readoutBuf[dataCode] = 0
                 print(readoutBuf[dataCode])
+            elif readoutBuf[dataCode] == 'dt':
+                # Check the format of date and time. maximum year is 2080
+                if item[2] > 80 or not item[3]*item[4] or item[3] > 12 or item[4] > 31 or item[5] > 23 or item [6] > 59 or item[7] > 59:
+                    continue
+                readoutBuf[dataCode] = '%i-%02i-%02i %02i:%02i:%02i' % (2000 + item[2], item[3], item[4], item[5], item[6], item[7])
+                print(readoutBuf[dataCode])
+            elif readoutBuf[dataCode] == 'byte':
+                readoutBuf[dataCode] = b''
+                for k in range(4):
+                    if item[2 + i * 3] != 255:
+                        if item[2+i*3] > 23 or item[3+i*3] > 59 or item[4+i*3] > 100:
+                            continue
+                        else:
+                            readoutBuf[dataCode] += bytes([item[2+i*3], item[3+i*3], item[4+i*3]])
+                if readoutBuf[dataCode] == b'':
+                    continue
 
-
-# print(checkFormat(rcvStr))
+                print(readoutBuf[dataCode])
+            # print(checkFormat(rcvStr))
