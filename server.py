@@ -3,12 +3,10 @@ import selectors
 import types, re
 import pandas as pd
 import fileHandler as fh
-#from tkinter import *
 from Crypto.Cipher import AES
 import pgDatabase as pgdb
 from databaseModel import *
 import requests
-import json
 
 
 class serverClass:

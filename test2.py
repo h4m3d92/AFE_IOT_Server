@@ -1,2 +1,1 @@
-a = b'\x12\\23'
-print(a.decode())
+print(round(123.7968654, 3))

@@ -95,13 +95,26 @@ for i in range(obisNum):
     for name, obis in readoutMap.items():
         if obis == item[:2]:
             dataCode = name
-            break
+            print(dataCode)
+            if readoutBuf[dataCode] == 'int':
+                if name == 'broken_device_num':
+                    # The first 6 bytes are date and time
+                    try:
+                        readoutBuf[dataCode] = int(re.findall('[0-9]+', item[8:].decode())[0])
+                    except:
+                        readoutBuf[dataCode] = 0
+                else:
+                    try:
+                        readoutBuf[dataCode] = int(re.findall('[0-9]+', item[2:].decode())[0])
+                    except:
+                        readoutBuf[dataCode] = 0
+                print(readoutBuf[dataCode])
+            elif readoutBuf[dataCode] == 'float':
+                try:
+                    readoutBuf[dataCode] = round(float(re.findall('[.0-9]+', item[8:].decode())[0]), 3)
+                except:
+                    readoutBuf[dataCode] = 0
+                print(readoutBuf[dataCode])
 
-    if not dataCode:
-        continue
-    print(dataCode)
-    if readoutBuf[dataCode] == 'int':
-        readoutBuf[dataCode] = int(re.findall('[0-9]', item[2:].decode())[0])
-        print(readoutBuf[dataCode])
 
 # print(checkFormat(rcvStr))
