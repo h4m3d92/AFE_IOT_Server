@@ -2,7 +2,7 @@ from crc import *
 import re
 
 
-rcvStr = '7E 00 63 20 04 00 5C 27 A3 00 01 00 00 00 00 00 00 00 00 80 00 15 03 04 14 02 26 00 00 00 00 00 00 00 00 80 01 15 03 04 02 38 01 00 00 00 00 00 00 31 32 80 04 00 00 00 00 00 00 00 00 00 32 33 30 2E 31 80 08 00 00 00 00 00 00 00 00 31 35 2E 38 32 35 80 0C 00 00 00 00 00 00 00 33 34 35 30 2E 32 35 60 BA 7E'
+rcvStr = '7E 00 63 20 04 00 5C 27 A3 00 01 00 00 00 00 00 00 00 00 80 00 15 03 04 14 02 26 00 00 00 00 00 00 00 00 80 F0 10 22 64 02 29 10 12 01 44 FF FF FF 00 00 80 01 15 03 04 02 38 01 00 00 00 00 00 00 31 32 80 04 00 00 00 00 00 00 00 00 00 32 33 30 2E 31 80 08 00 00 00 00 00 00 00 00 31 35 2E 38 32 35 80 0C 00 00 00 00 00 00 00 33 34 35 30 2E 32 35 60 BA 7E'
 rcvStr = bytearray.fromhex(rcvStr)
 # print(calCrc(rcvStr[3:]))
 
@@ -124,13 +124,12 @@ for i in range(obisNum):
             elif readoutBuf[dataCode] == 'byte':
                 readoutBuf[dataCode] = b''
                 for k in range(4):
-                    if item[2 + i * 3] != 255:
-                        if item[2+i*3] > 23 or item[3+i*3] > 59 or item[4+i*3] > 100:
+                    if item[2 + k * 3] != 255:
+                        if item[2+k*3] > 23 or item[3+k*3] > 59 or item[4+k*3] > 100:
                             continue
                         else:
-                            readoutBuf[dataCode] += bytes([item[2+i*3], item[3+i*3], item[4+i*3]])
+                            readoutBuf[dataCode] += bytes([item[2+k*3], item[3+k*3], item[4+k*3]])
                 if readoutBuf[dataCode] == b'':
                     continue
-
                 print(readoutBuf[dataCode])
             # print(checkFormat(rcvStr))
