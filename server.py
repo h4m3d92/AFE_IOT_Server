@@ -67,12 +67,12 @@ class serverClass:
             return tempGws
 
         self.gwList = pd.DataFrame(
-            columns=['gwId', 'gwNumber', 'manfr', 'data_filter', 'ekey', 'password', 'validation'])
+            columns=['gwId', 'gwNumber', 'data_filter', 'ekey', 'password', 'validation'])
 
         for idx in range(len(tempGws)):
             self.gwList = self.gwList.append({'gwId': tempGws['id'].loc[idx], 'gwNumber':
                 int(tempGws['serial_number'].loc[idx]), 'data_filter': tempGws['data_filter'].loc[idx], 'ekey':
-                tempGws['e_key'].loc[idx], 'manfr': tempGws['manfr'].loc[idx], 'password': tempGws['password'].loc[idx],
+                tempGws['e_key'].loc[idx], 'password': tempGws['password'].loc[idx],
                                               'validation': True}, ignore_index=True)
 
         for idx in range(len(self.gwOnlineDf)):
@@ -99,11 +99,7 @@ class serverClass:
                                 self.gwOnlineDf['taskState'].loc[idx] = self.taskStates['START']
                                 self.gwOnlineDf['gwLink'].loc[idx] = None
                                 self.gwOnlineDf['taskId'].loc[idx] = itask.id
-                                if self.gwList['manfr'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[idx]].item().upper() == 'TAP':
-                                    gwSerailNum = '%014i' %self.gwOnlineDf['gwNumber'].loc[idx]
-                                else:
-                                    gwSerailNum = str(self.gwOnlineDf['gwNumber'].loc[idx])
-
+                                gwSerailNum = '%014i' %self.gwOnlineDf['gwNumber'].loc[idx]
                                 temp = list(db.session.query(Meter.id, Meter.serial_number, Meter.rs_dev_addr, Meter.rs_port_number).join(Gateway).filter(Gateway.serial_number == gwSerailNum).order_by(Meter.id))
                                 for i in range(len(temp)):
                                     temp[i] = list(temp[i])+["no_response"]
@@ -139,11 +135,7 @@ class serverClass:
                         self.gwOnlineDf['taskState'].loc[idx] = self.taskStates['REQ_READOUT']
                         self.gwOnlineDf['second'].loc[idx] = 0
                     else:
-                        if self.gwList['manfr'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[idx]].item() == 'TAP':
-                            gwSerailNum = '%014i' % self.gwOnlineDf['gwNumber'].loc[idx]
-                        else:
-                            gwSerailNum = str(self.gwOnlineDf['gwNumber'].loc[idx])
-                        print(datetime.now(), 'Readout task is finished - gateway: %s!' % gwSerailNum)
+                        print(datetime.now(), 'Readout task is finished - gateway: %s!' % self.gwOnlineDf['gwNumber'].loc[idx])
                         self.writeReadoutLog(idx)
                         self.gwOnlineDf['state'].loc[idx] = self.onlineStates['IDLE']
 
@@ -154,11 +146,7 @@ class serverClass:
                         self.gwOnlineDf['taskState'].loc[idx] = self.taskStates['REQ_READOUT']
                         self.gwOnlineDf['second'].loc[idx] = 0
                     else:
-                        if self.gwList['manfr'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[idx]].item() == 'TAP':
-                            gwSerailNum = '%014i' % self.gwOnlineDf['gwNumber'].loc[idx]
-                        else:
-                            gwSerailNum = str(self.gwOnlineDf['gwNumber'].loc[idx])
-                        print(datetime.now(), 'Readout task is finished - gateway: %s!' % gwSerailNum)
+                        print(datetime.now(), 'Readout task is finished - gateway: %s!' % self.gwOnlineDf['gwNumber'].loc[idx])
                         self.writeReadoutLog(idx)
                         self.gwOnlineDf['state'].loc[idx] = self.onlineStates['IDLE']
 
@@ -187,44 +175,27 @@ class serverClass:
         except:
             port = 1
 
-        if self.gwList['manfr'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[gwIdx]].item() == 'tap':
-            if self.gwList['data_filter'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[gwIdx]].item():
-                filterState = 1
-            else:
-                filterState = 0
-            initBd = 20
-            sendStr = b'\x7E\x00\x23\x00\x01'
-            sendStr += bytes([0, 12 + len(serialNum)])
-            sendStr += self.gwOnlineDf['frameCounter'].loc[gwIdx][self.gwOnlineDf['meterIdx'].loc[gwIdx]]
-            sendStr += bytes([port, len(serialNum), filterState, initBd])
-            waitTime = 1200
-            sendStr += bytes([int(waitTime / 256), waitTime % 256])
-            sendStr += bytes(4)
-            sendStr += bytes(serialNum, 'utf-8')
-            sendStr += bytes(16 - len(serialNum))
-            print(datetime.now(), 'Request readout:', sendStr)
-            if True:
-                encryptor = AES.new(self.gwList['ekey'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[gwIdx]].item().encode('utf-8'), self.encMode)
-                sendStr = sendStr[:3] + encryptor.encrypt(sendStr[3:])
-            sendStr += self.calCrc(sendStr[3:], 32)
-            sendStr += b'\x7E'
-            self.gwOnlineDf['buffer'].loc[gwIdx] = sendStr
+        if self.gwList['data_filter'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[gwIdx]].item():
+            filterState = 1
         else:
-            serialLen = '%02i' % len(serialNum)
-            port = str(port)
-            if self.gwList['data_filter'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[gwIdx]].item():
-                filterState = '1'
-            else:
-                filterState = '0'
-
-            sendStr = b'READOUT0' + bytes(port, 'utf-8') + bytes(serialLen, 'utf-8') + bytes(serialNum, 'utf-8') + \
-                      bytes(filterState, 'utf-8') + b'\r\n'
-
-            try:
-                self.gwOnlineDf['buffer'].loc[gwIdx] = self.encTfcStr(sendStr, self.gwList['ekey'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[gwIdx]].item())
-            except:
-                print('ERROR send request: Bad encryption key')
-                self.gwOnlineDf['second'].loc[gwIdx] = 1000
+            filterState = 0
+        initBd = 20
+        sendStr = b'\x7E\x00\x23\x00\x01'
+        sendStr += bytes([0, 12 + len(serialNum)])
+        sendStr += self.gwOnlineDf['frameCounter'].loc[gwIdx][self.gwOnlineDf['meterIdx'].loc[gwIdx]]
+        sendStr += bytes([port, len(serialNum), filterState, initBd])
+        waitTime = 1200
+        sendStr += bytes([int(waitTime / 256), waitTime % 256])
+        sendStr += bytes(4)
+        sendStr += bytes(serialNum, 'utf-8')
+        sendStr += bytes(16 - len(serialNum))
+        print(datetime.now(), 'Request readout:', sendStr)
+        if True:
+            encryptor = AES.new(self.gwList['ekey'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[gwIdx]].item().encode('utf-8'), self.encMode)
+            sendStr = sendStr[:3] + encryptor.encrypt(sendStr[3:])
+        sendStr += self.calCrc(sendStr[3:], 32)
+        sendStr += b'\x7E'
+        self.gwOnlineDf['buffer'].loc[gwIdx] = sendStr
 
     def serverRoutine(self):
         self.timerRoutine()
@@ -267,15 +238,11 @@ class serverClass:
         # try:
         rcvReadout = str(orgRcvReadout).replace('\x5c\x5c', '\x5c')
         # if it is tap gateway, check the frame counter in order to find correct serial number
-        if self.gwList['manfr'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[self.gwIdx]].item() == 'tap':
-            if orgRcvReadout[7:9] not in self.gwOnlineDf['frameCounter'].loc[self.gwIdx]:
-                print('ERROR readout: Wrong frame counter!')
-                return
+        if orgRcvReadout[7:9] not in self.gwOnlineDf['frameCounter'].loc[self.gwIdx]:
+            print('ERROR readout: Wrong frame counter!')
+            return
 
-            meterIdx = self.gwOnlineDf['frameCounter'].loc[self.gwIdx].index(orgRcvReadout[7:9])
-        else:
-            meterIdx = self.gwOnlineDf['meterIdx'].loc[self.gwIdx]
-
+        meterIdx = self.gwOnlineDf['frameCounter'].loc[self.gwIdx].index(orgRcvReadout[7:9])
         dbMeterId = self.gwOnlineDf['meters'].loc[self.gwIdx][meterIdx][0]
 
         errorMsg = None
@@ -445,6 +412,12 @@ class serverClass:
             return
 
         try:
+            temp = self.checkFormat(rcvData)
+            if temp:
+                print(datetime.now(), 'ERROR: received message is incorrect - %s!' %temp)
+                self.gwOnlineDf['validation'].loc[self.gwIdx] = False
+                return
+
             if self.gwOnlineDf['state'].loc[self.gwIdx] == self.onlineStates['IDLE']:
                 # self.gwOnlineDf['validation'].loc[self.gwIdx] = False
                 # self.gwOnlineDf['failReason'].loc[self.gwIdx] = 'Unexpected income message'
@@ -486,12 +459,6 @@ class serverClass:
                     self.gwOnlineDf['state'].loc[idx] = self.onlineStates['IN_TASK']
                     self.gwOnlineDf['taskState'].loc[idx] = self.taskStates['START']
                     self.gwOnlineDf['gwLink'].loc[idx] = self.gwOnlineDf['gwNumber'].loc[self.gwIdx]
-                    if self.gwList['manfr'].loc[
-                        self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[idx]].item().upper() == 'TAP':
-                        gwSerailNum = '%014i' % self.gwOnlineDf['gwNumber'].loc[idx]
-                    else:
-                        gwSerailNum = str(self.gwOnlineDf['gwNumber'].loc[idx])
-
                     self.gwOnlineDf['meters'].loc[idx] = [temp[:3] + [temp[3].name, "no_response"]]
                     self.gwOnlineDf['frameCounter'].loc[idx] = []
                     for cnt, item in enumerate(self.gwOnlineDf['meters'].loc[idx]):
@@ -499,7 +466,7 @@ class serverClass:
                     self.gwOnlineDf['meterIdx'].loc[idx] = 0
                     self.gwOnlineDf['second'].loc[idx] = 2
                     print('')
-                    print(datetime.now(), 'Readout task started on gateway %s ...' % gwSerailNum)
+                    print(datetime.now(), 'Readout task started on gateway %s ...' % self.gwOnlineDf['gwNumber'].loc[idx])
 
                     return
                 except:
@@ -512,15 +479,8 @@ class serverClass:
                     print(datetime.now(), 'ERROR task: It is not readout mode - Gateway %i!' % self.gwOnlineDf['gwNumber'].loc[self.gwIdx])
                     return
 
-                if self.gwList['manfr'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[self.gwIdx]].item() == 'tap':
-                    encryptor = AES.new(self.gwList['ekey'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[self.gwIdx]].item().encode('utf-8'), self.encMode)
-                    rcvData = rcvData[:3] + encryptor.decrypt(rcvData[3:int((len(rcvData)-6) / 16) * 16 + 3]) + rcvData[int((len(rcvData)-6) / 16) * 16 + 3:]
-                else:
-                    try:
-                        rcvData = self.encTfcStr(rcvData, self.gwList['ekey'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[self.gwIdx]].item())
-                    except:
-                        print(datetime.now(), 'ERROR readout: Bad encryption key - Gateway %i!' % self.gwOnlineDf['gwNumber'].loc[self.gwIdx])
-                        return
+                encryptor = AES.new(self.gwList['ekey'].loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[self.gwIdx]].item().encode('utf-8'), self.encMode)
+                rcvData = rcvData[:3] + encryptor.decrypt(rcvData[3:int((len(rcvData)-6) / 16) * 16 + 3]) + rcvData[int((len(rcvData)-6) / 16) * 16 + 3:]
 
                 print(datetime.now(), 'Readout received - gateway: %i, data:' % self.gwOnlineDf['gwNumber'].loc[self.gwIdx], rcvData)
                 if len(rcvData) < 12:
@@ -531,21 +491,27 @@ class serverClass:
                 return
 
             if self.gwOnlineDf['state'].loc[self.gwIdx] == self.onlineStates['GET_GWNUM']:
-                if len(rcvData) > self.gwNumLen + 19:
+                if len(rcvData) != 38:
                     self.gwOnlineDf['validation'].loc[self.gwIdx] = False
                     self.gwOnlineDf['failReason'].loc[self.gwIdx] = 'Unexpected income length'
+                    print(datetime.now(), 'ERROR: Unexpected income length!')
                     return
-                rcvData = str(rcvData)[2:-1]
-                if rcvData.find('GWNUMBER') == -1 and rcvData.find('EDBNUMBER') == -1:
+
+                rcvData = rcvData[21:35]
+                try:
+                    rcvData = int(rcvData.decode())
+                except:
                     self.gwOnlineDf['validation'].loc[self.gwIdx] = False
-                    self.gwOnlineDf['failReason'].loc[self.gwIdx] = 'Bad input for gateway number'
+                    self.gwOnlineDf['failReason'].loc[self.gwIdx] = 'Incorrect serial number'
+                    print(datetime.now(), 'ERROR: Incorrect serial number!11')
                     return
-                rcvData = re.findall('[0-9]+', rcvData)[0]
-                if (len(rcvData) != self.gwNumLen and len(rcvData) != self.edbNumLen) or self.gwList.loc[self.gwList['gwNumber'] == int(rcvData)].empty:
+
+                if len(str(rcvData)) != self.gwNumLen or self.gwList.loc[self.gwList['gwNumber'] == rcvData].empty:
                     self.gwOnlineDf['validation'].loc[self.gwIdx] = False
                     self.gwOnlineDf['failReason'].loc[self.gwIdx] = 'Wrong gateway number'
+                    print(datetime.now(), 'ERROR: Wrong gateway number!')
                     return
-                rcvData = int(rcvData)
+
                 if not self.gwList['validation'].loc[self.gwList['gwNumber'] == rcvData].item():
                     self.gwOnlineDf['validation'].loc[self.gwIdx] = False
                     self.gwOnlineDf['failReason'].loc[self.gwIdx] = 'Invalid gateway number'
@@ -651,7 +617,7 @@ class serverClass:
                 self.gwOnlineDf = self.gwOnlineDf.append(
                     {'ip': addr[0], 'port': addr[1], 'state': self.onlineStates['GET_GWNUM'], 'gwNumber': None,
                      'second': 0, 'validation': True, 'buffer': b'', 'failReason': ''}, ignore_index=True)
-                data.outb = b"EDBNUMBER\r\n"
+                data.outb = b'\x7E\x00\x13\x20\x01\x00\x0C\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xD2\x39\x7E'
         else:
             fh.writeEvent(['Error', 'Err_005', str(addr) + 'The ip and port is repetitive!'])
             self.gwOnlineDf = self.gwOnlineDf.append({'ip': addr[0], 'port': addr[1], 'state': self.onlineStates['GET_GWNUM'], 'gwNumber': None,
@@ -716,6 +682,27 @@ class serverClass:
             print(datetime.now(), 'ERROR database: Something is wrong with writing the gateway_stats!')
             db.session.close()
 
+    def checkFormat(self, inStr):
+        if len(inStr) < 22:
+            return 'Short frame'
+
+        # The first and last flag should be 7E
+        if inStr[0] != 126 or inStr[-1] != 126:
+            return 'Incorrect flag'
+
+        frameLen = int.from_bytes(inStr[1:3], "big")
+        if frameLen != len(inStr) - 3:
+            return 'Incorrect frame length'
+
+        if frameLen % 16 != 3:
+            return 'Invalid frame length'
+
+        if int.from_bytes(inStr[5:7], "big") > frameLen - 7:
+            return 'Incorrect data length'
+
+        if self.calCrc(inStr[3:-3], frameLen - 3) != inStr[-3:-1]:
+            return 'Incorrect CRC'
+
     def createHtml(self, meterNum, roNum, status, doesCache):
         # if doesCache:
         #     doesCache = 2592000
@@ -728,24 +715,6 @@ class serverClass:
         # tData = 'HTTP/1.1 200 OK\r\nDate: ' + datetime.now(tz=timezone.utc).strftime("%a, %d %b %Y %H:%M:%S") + 'GMT\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: application/json\r\nContent-Length: %i\r\nConnection: keep-alive\r\nCache-Control: max-age=%i, no-transform\r\nCF-Cache-Status: HIT\r\nAge: 557\r\nAccept-Ranges: bytes\r\n\r\n{\n   "readouts" : [\n      {\n         "meter_id" : %i,\n         "readout_id" : %i\n      }\n   ],\n   "status" : "%s"\n}\n' % (tlen, doesCache, int(meterNum), int(roNum), status)
 
         return tData.encode()
-
-    def encTfcStr(self, inStr, inKey):
-        outStr = b''
-        cnt = 0
-        tKey = b''
-
-        for i in range(int(len(inKey) / 2)):
-            tKey += bytes([int(inKey[i * 2:i * 2 + 2])])
-
-        for c in inStr:
-            if c >= 32:
-                c ^= tKey[cnt % 6]
-                cnt += 1
-
-            c = bytes([c])
-            outStr += c
-
-        return outStr
 
     def calCrc(self, inStr, inLen):
         dnpCrcTable = [
