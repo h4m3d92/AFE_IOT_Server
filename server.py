@@ -15,13 +15,15 @@ class serverClass:
             columns=['ip', 'port', 'gwNumber', 'state', 'taskState', 'meterIdx', 'meters', 'taskId', 'gwLink', 'cache', 'frameCounter', 'validation', 'second',
                      'buffer', 'failReason'])
         self.temp = 0
-        temp = pgdb.checkEventType('gw_online', 'gw_offline')
-        if type(temp) is str:
-            print(temp)
-            input()
-            exit()
+        # temp = pgdb.checkEventType('gw_online', 'gw_offline')
+        # if type(temp) is str:
+        #     print(temp)
+        #     input()
+        #     exit()
 
-        if self.gwListUpdate() is str:
+        temp = self.gwListUpdate()
+        if type(temp) is str:
+            print(datetime.now(), temp)
             input()
             exit()
 
@@ -61,26 +63,24 @@ class serverClass:
         fh.writeEvent(['Regular', 'Server start', ''])
 
     def gwListUpdate(self):
-        tempGws = pgdb.readGateways()
-        if type(tempGws) is str:
-            print(tempGws)
-            return tempGws
+        try:
+            tempGws = pd.DataFrame(pgdb.query_to_dict(db.session.query(Device).join(Project).order_by(Device.id).filter(Device.is_active == True).filter(Device.is_master == True).all()))
 
-        self.gwList = pd.DataFrame(
-            columns=['gwId', 'gwNumber', 'data_filter', 'ekey', 'password', 'validation'])
+            self.gwList = pd.DataFrame(
+                columns=['gwId', 'gwNumber', 'projectName', 'ekey', 'password', 'validation'])
 
-        for idx in range(len(tempGws)):
-            self.gwList = self.gwList.append({'gwId': tempGws['id'].loc[idx], 'gwNumber':
-                int(tempGws['serial_number'].loc[idx]), 'data_filter': tempGws['data_filter'].loc[idx], 'ekey':
-                tempGws['e_key'].loc[idx], 'password': tempGws['password'].loc[idx],
-                                              'validation': True}, ignore_index=True)
+            for idx in range(len(tempGws)):
+                self.gwList = self.gwList.append({'gwId': tempGws['id'].loc[idx], 'gwNumber':
+                    int(tempGws['serial_number'].loc[idx]), 'projectName': db.session.query(Project.name).filter(Project.id == tempGws['id'].loc[idx].item()).first()[0], 'ekey': tempGws['e_key'].loc[idx], 'password': tempGws['password'].loc[idx],
+                                                  'validation': tempGws['is_active'].loc[idx]}, ignore_index=True)
 
-        for idx in range(len(self.gwOnlineDf)):
-            if self.gwOnlineDf['gwNumber'].loc[idx]:
-                if self.gwList.loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[idx]].empty:
-                    self.gwOnlineDf['validation'].loc[idx] = False
-
-        print(datetime.now(), 'Gateway list got updated.')
+            for idx in range(len(self.gwOnlineDf)):
+                if self.gwOnlineDf['gwNumber'].loc[idx]:
+                    if self.gwList.loc[self.gwList['gwNumber'] == self.gwOnlineDf['gwNumber'].loc[idx]].empty:
+                        self.gwOnlineDf['validation'].loc[idx] = False
+            print(datetime.now(), 'Gateway list got updated.')
+        except:
+            return'ERROR DATABASE: Cannot read the device table!'
 
     def timerRoutine(self):
         if datetime.now().second != self.time.second:
@@ -89,7 +89,7 @@ class serverClass:
                 for itask in db.session.query(Task).all():
                     if itask.execute_time.hour == datetime.now().hour and itask.execute_time.minute == datetime.now().minute:
                     # if itask.execute_time.hour == datetime.now().hour:
-                        taskGws = db.session.query(Gateway).join(TaskGateway).filter(TaskGateway.c.task_id == itask.id).all()
+                        taskGws = db.session.query(Device).join(TaskProject).filter(TaskProject.c.task_id == itask.id).all()
                         for gws in taskGws:
                             if not self.gwOnlineDf['state'].loc[self.gwOnlineDf['gwNumber'] == int(gws.serial_number)].empty:
                                 idx = self.gwOnlineDf.loc[self.gwOnlineDf['gwNumber'] == int(gws.serial_number)].index[0]
@@ -100,7 +100,7 @@ class serverClass:
                                 self.gwOnlineDf['gwLink'].loc[idx] = None
                                 self.gwOnlineDf['taskId'].loc[idx] = itask.id
                                 gwSerailNum = '%014i' %self.gwOnlineDf['gwNumber'].loc[idx]
-                                temp = list(db.session.query(Meter.id, Meter.serial_number, Meter.rs_dev_addr, Meter.rs_port_number).join(Gateway).filter(Gateway.serial_number == gwSerailNum).order_by(Meter.id))
+                                temp = list(db.session.query(Device.id, Device.serial_number).join(Project).filter(Device.serial_number == gwSerailNum).order_by(Device.id))
                                 for i in range(len(temp)):
                                     temp[i] = list(temp[i])+["no_response"]
                                     temp[i][3] = temp[i][3].name
@@ -299,7 +299,8 @@ class serverClass:
 
         # Check if the identification is on database
         identMsg = re.findall('IDMSG\((.*?)\)', rcvReadout)[0]
-        obises = db.session.query(ReadoutMap).filter(ReadoutMap.meter_ident == identMsg).first()
+        # obises = db.session.query(ReadoutMap).filter(ReadoutMap.meter_ident == identMsg).first()
+        obises = None
         if not obises:
             print('ERROR readout: Unknown identification message!')
             self.gwOnlineDf['meters'].loc[self.gwIdx][meterIdx][4] = 'ident_unknown'
@@ -328,7 +329,8 @@ class serverClass:
                   loc[self.gwIdx][self.gwOnlineDf['meterIdx'].loc[self.gwIdx]][1], ', Received:', temp)
             self.gwOnlineDf['meters'].loc[self.gwIdx][meterIdx][4] = 'wrong_serial'
             return
-        roParams = readoutParameters()
+        # roParams = readoutParameters()
+        roParams = None
         self.readoutCnt += 1
 
         tempDbQuery = "db.session.add(Readout(id=self.readoutCnt,readout_map_id=obises.id,meter_id=dbMeterId,task_id=self.gwOnlineDf['taskId'].loc[self.gwIdx]"
@@ -400,7 +402,7 @@ class serverClass:
                 portNum = 'two'
             self.gwOnlineDf['meters'].loc[self.gwIdx][meterIdx][3] = portNum
             try:
-                db.session.query(Meter).filter(Meter.id == int(dbMeterId)).update({'rs_port_number': portNum})
+                # db.session.query(Meter).filter(Meter.id == int(dbMeterId)).update({'rs_port_number': portNum})
                 db.session.commit()
                 db.session.close()
             except:
@@ -432,15 +434,16 @@ class serverClass:
                 self.gwOnlineDf['cache'].loc[self.gwIdx] = True
                 try:
                     meterId = int(meterId[0])
-                    temp = db.session.query(Meter.id, Meter.serial_number, Meter.rs_dev_addr, Meter.rs_port_number, Meter.gateway_id).join(
-                            Gateway).filter(Meter.id == meterId).order_by(Meter.id).first()
+                    # temp = db.session.query(Meter.id, Meter.serial_number, Meter.rs_dev_addr, Meter.rs_port_number, Meter.gateway_id).join(
+                    #         Gateway).filter(Meter.id == meterId).order_by(Meter.id).first()
                     if temp:
                         temp = list(temp)
                     else:
                         self.gwOnlineDf['buffer'].loc[self.gwIdx] = self.createHtml(meterId, 0, 'no_meter', self.gwOnlineDf['cache'].loc[self.gwIdx])
                         return
 
-                    gwNum = int(db.session.query(Gateway.serial_number).filter(Gateway.id == temp[4]).first()[0])
+                    # gwNum = int(db.session.query(Gateway.serial_number).filter(Gateway.id == temp[4]).first()[0])
+                    gwNum = None
                     if self.gwOnlineDf.loc[self.gwOnlineDf['gwNumber'] == gwNum].empty:
                         # print(self.gwOnlineDf)
                         self.gwOnlineDf['buffer'].loc[
@@ -528,6 +531,7 @@ class serverClass:
                 fh.writeConnection(['Registered', self.gwOnlineDf['ip'].loc[self.gwIdx], self.gwOnlineDf['port'].loc[self.gwIdx],
                                     self.gwOnlineDf['gwNumber'].loc[self.gwIdx], None])
                 self.gwOnlineDf['state'].loc[self.gwIdx] = self.onlineStates['IDLE']
+                print(datetime.now(), "Gateway %i is online from ('%s', %i)" % (self.gwOnlineDf['gwNumber'].loc[self.gwIdx], self.gwOnlineDf['ip'].loc[self.gwIdx], self.gwOnlineDf['port'].loc[self.gwIdx]))
                 return
         except:
             return
@@ -629,7 +633,7 @@ class serverClass:
 
     def writeGatewayStats(self):
         try:
-            gws = db.session.query(Gateway.id).all()
+            gws = db.session.query(Device.id).all()
             for i in gws:
                 gwIdx = i[0]
                 try:
@@ -638,11 +642,11 @@ class serverClass:
                     print(datetime.now(), 'ERROR database: No "dashboard" name in stats_type table!')
                     db.session.close()
                     continue
-                meterNum = db.session.query(Meter).filter(Meter.gateway_id == gwIdx).count()
+                meterNum = db.session.query(Device).filter(Device.project_id == gwIdx).count()
                 meterNum
                 time_today = datetime.now().date()
                 time_yesterday = time_today - timedelta(days=1)
-                totalRo = db.session.query(ReadoutLog).join(Meter).filter(Meter.gateway_id == gwIdx).filter(
+                totalRo = db.session.query(ReadoutLog).join(Device).filter(Device.project_id == gwIdx).filter(
                     ReadoutLog.server_dt < time_today).filter(ReadoutLog.server_dt > time_yesterday).count()
                 try:
                     successTypeId = db.session.query(ReadoutType.id).filter(ReadoutType.name == 'success').first()[0]
@@ -650,7 +654,7 @@ class serverClass:
                     print(datetime.now(), 'ERROR database: No "success" name in readout_type table!')
                     db.session.close()
                     continue
-                successRo = db.session.query(ReadoutLog).join(Meter).filter(Meter.gateway_id == gwIdx).filter(
+                successRo = db.session.query(ReadoutLog).join(Device).filter(Device.project_id == gwIdx).filter(
                     ReadoutLog.type_id == successTypeId).filter(ReadoutLog.server_dt < time_today).filter(
                     ReadoutLog.server_dt > time_yesterday).count()
                 try:
@@ -659,19 +663,19 @@ class serverClass:
                     print(datetime.now(), 'ERROR database: No "ident_timeout" name in readout_type table!')
                     db.session.close()
                     continue
-                identTimeoutRo = db.session.query(ReadoutLog).join(Meter).filter(Meter.gateway_id == gwIdx).filter(
+                identTimeoutRo = db.session.query(ReadoutLog).join(Device).filter(Device.project_id == gwIdx).filter(
                     ReadoutLog.type_id == identTimeout).filter(ReadoutLog.server_dt < time_today).filter(
                     ReadoutLog.server_dt > time_yesterday).count()
                 otherErrorRo = totalRo - successRo - identTimeoutRo
-                successAtleast = db.session.query(ReadoutLog).join(Meter).filter(Meter.gateway_id == gwIdx).filter(
+                successAtleast = db.session.query(ReadoutLog).join(Device).filter(Device.gateway_id == gwIdx).filter(
                     ReadoutLog.type_id == successTypeId).filter(ReadoutLog.server_dt < time_today).filter(
                     ReadoutLog.server_dt > time_yesterday).distinct(ReadoutLog.meter_id).count()
-                maxId = db.session.query(GatewayStats.id).order_by(GatewayStats.id.desc()).first()
+                maxId = db.session.query(ProjectStats.id).order_by(ProjectStats.id.desc()).first()
                 if maxId:
                     maxId = maxId[0] + 1
                 else:
                     maxId = 1
-                db.session.add(GatewayStats(id=maxId, type_id=dashboardTypeId, gateway_id=gwIdx, total_meter=meterNum,
+                db.session.add(ProjectStats(id=maxId, type_id=dashboardTypeId, gateway_id=gwIdx, total_meter=meterNum,
                                             succ_meter_last=successAtleast, succ_meter_atleast=successAtleast,
                                             total_read_daily=totalRo, succ_read_daily=successRo,
                                             err1_read_daily=identTimeoutRo, err2_read_daily=otherErrorRo,
